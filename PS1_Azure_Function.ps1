@@ -3,13 +3,9 @@
 Param(
         
     [parameter(Mandatory=$false)]
-	
     $AzLocation = 'UKWest',
-
-        
-
+    
     [parameter(Mandatory=$false)]
-	
     $AZResourceGroupName = 'AZ-Function-Demo-RG'
 
 )
@@ -58,8 +54,3 @@ $WebAppConfig = @{
 $AzureFunction = New-AzureRmResource @WebAppConfig
 
 Write-Output ("Azure Function {0} has been create in {1} Location in Resource Group {2}!" -f $AzureFunction.Name,$AzureFunction.Location,$AzureFunction.ResourceGroupName)
-
-
-
-
-
