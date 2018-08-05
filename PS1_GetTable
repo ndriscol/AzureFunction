@@ -1,0 +1,5 @@
+Add-Type -path C:\Microsoft.WindowsAzure.Storage.dll
+$storageAccount = [Microsoft.WindowsAzure.Storage.CloudStorageAccount]::Parse("")
+$table = $storageAccount.CreateCloudTableClient().GetTableReference("")
+$query = New-Object "Microsoft.WindowsAzure.Storage.Table.TableQuery"
+$data = $table.ExecuteQuery($query)
