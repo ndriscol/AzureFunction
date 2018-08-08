@@ -1,0 +1,112 @@
+
+[cmdletbinding()]
+Param(
+	$AzFunctionDisplayName = 'Az - Demo Azure Function',
+	
+	$AzFunctionHomePage = 'https://www.AZ-Funct-Demo.azurewebsites.net/GetAZVMStatus',
+
+	$AzLocation = 'UKWest',
+
+	$AzFunctionuris = 'https://www.AZ-Funct-Demo.azurewebsites.net/GetAZVMStatus',
+
+	$AZResourceGroupName = 'AZ-Funct-Demo-RG'
+)
+
+Function Create-SecureString{
+[cmdletbinding()]
+Param(
+
+
+)
+	## Create the secure String and key 
+	$key = [byte[]]::new(32)
+	[Security.Cryptography.RNGCryptoServiceProvider]::Create().GetBytes($Key)
+	[Reflection.Assembly]::LoadWithPartialName("System.Web")
+	$Password = [System.Web.Security.Membership]::GeneratePassword(20,1)
+	$SecureString = Convertto-SecureString -asplaintext -String $Password -Force
+	$HashedValue = ConvertFrom-SecureString -Key $key $SecureString
+	
+	$object = New-Object –TypeName PSObject –Prop(@{
+		'Key'          = $Key;
+   		'RawPassword'  = $Password;
+   		'Hash'         = $HashedValue;
+   		'SecureString' = $SecureString
+	})
+	
+	return $object 
+}
+
+## Sign into Azure.
+Login-AzureRMAccount
+
+## Create a new Resource Group to host your Function.
+$ResourceGroupConfig = @{
+   Location = $AzLocation
+   Name     = $AZResourceGroupName
+}
+
+$ResourceGroup = New-AzureRMResourceGroup @ResourceGroupConfig
+
+## Create Storage Account for Azure Function
+
+$StorageAccConfig = @{
+   Location          = $AzLocation
+   Name              = ($AZResourceGroupName.replace("RG","Stgacc").replace("-","").tolower())
+   ResourceGroupName = $AZResourceGroupName
+   SkuName           = 'Standard_LRS'
+}
+
+
+New-AzureRmStorageAccount @StorageAccConfig
+
+## creates the function app
+
+$WebAppConfig = @{
+    Kind              = "Functionapp"
+    Location          = $AzLocation
+    Properties        = @{test = "test"} 
+    ResourceName      = ($AZResourceGroupName.replace("RG","Function"))
+    ResourceType      = "microsoft.web/sites" 
+    ResourceGroupName = $AZResourceGroupName
+    Force             = $true
+}
+
+New-AzureRmResource @WebAppConfig
+
+## Create keyvault to store credentials securely.
+
+$KeyVaultConfig = @{
+    Location          = $AzLocation
+    ResourceGroupName = $AZResourceGroupName
+    VaultName         = ($AZResourceGroupName).replace("RG","Vault") 
+}
+
+New-AzureRmKeyVault @KeyVaultConfig
+
+## creates a random password
+
+$KeyAndSecureString = Create-SecureString
+
+## Uploads secure string into credential store
+
+$KeyVaultSecret = @{
+     Name        = $AZResourceGroupName.replace("RG","Key")
+     SecretValue = $KeyAndSecureString.Securestringoff
+     VaultName   = ($AZResourceGroupName).replace("RG","Vault")
+}
+
+$secret = Set-AzureKeyVaultSecret @KeyVaultSecret
+
+<#
+$AZADApplication = New-AzureRmADApplication -DisplayName $AzFunctionDisplayName -HomePage $AzFunctionHomePage -IdentifierUris $AzFunctionuris -Password $KeyAndSecureString.Securestring
+
+## Create the App Service Principal
+$ServicePrincipleName = New-AzureRmADServicePrincipal -ApplicationId $AZADApplication.ApplicationId
+
+##
+New-AzureRmRoleAssignment -RoleDefinitionName 'Virtual Machine Contributor' -ServicePrincipalName $ServicePrincipleName.ApplicationId
+
+## $webapp.SiteConfig.AppSettings.Add([Microsoft.Azure.Management.WebSites.Models.NameValuePair]::new("test","Summer"))
+
+
+#>
