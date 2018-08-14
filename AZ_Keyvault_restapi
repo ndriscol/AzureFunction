@@ -1,0 +1,26 @@
+SUBSCRIPTION_ID=c667bfd0-7eef-4d67-a6ed-ffea929c9bea
+SERVICE_PRINCIPAL_NAME=azurekeyvaultsp1
+SERVICE_PRINCIPAL_PASSWORD=jongpassword
+RESOURCE_GROUP=jongdemorg1
+RESOURCE_GROUP_LOCATION=westus
+RESOURCE=https://vault.azure.net
+KEYVAULT_NAME=jongkeyvaultdemo123
+KEYVAULT_SECRET_NAME=jongsecretname
+KEYVAULT_SECRET_VALUE=jongsecretvalue
+
+TENANT_ID=$(az account show --query tenantId -otsv)
+az ad sp create-for-rbac -n $SERVICE_PRINCIPAL_NAME -p $SERVICE_PRINCIPAL_PASSWORD
+SERVICE_PRINCIPAL_APP_ID=$(az ad sp list --display-name $SERVICE_PRINCIPAL_NAME --query [0].appId -otsv)
+az group create --name $RESOURCE_GROUP --location $RESOURCE_GROUP_LOCATION
+az keyvault create -n $KEYVAULT_NAME -g $RESOURCE_GROUP
+az keyvault set-policy --name $KEYVAULT_NAME --secret-permissions get --spn http://$SERVICE_PRINCIPAL_NAME
+printf "\n\nclientId:$SERVICE_PRINCIPAL_APP_ID\nclientSecret:$SERVICE_PRINCIPAL_PASSWORD\ntenantId:$TENANT_ID\nsubscriptionId:$SUBSCRIPTION_ID\nvaultUri:$KEYVAULT_URI\nsecretName:$KEYVAULT_SECRET_NAME\napiVersion:2016-10-01\nresource:$RESOURCE\n\n"
+
+
+clientId:5bdca838-038b-4ac3-b732-ae185de0f854
+clientSecret:jongpassword
+tenantId:e5dfffc4-be25-4cbe-9ddf-fef8889bead2
+subscriptionId:c667bfd0-7eef-4d67-a6ed-ffea929c9bea
+vaultUri:https://jongkeyvaultdemo123.vault.azure.net/
+secretName:jongsecretname
+apiVersion:2016-10-01
