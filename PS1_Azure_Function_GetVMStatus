@@ -1,7 +1,7 @@
 
 [cmdletbinding()]
 Param(
-	$AzFunctionDisplayName = 'Az - Demo Azure Function',
+	$AzFunctionDisplayName = 'Az - Demo Function',
 	
 	$AzFunctionHomePage = 'https://www.AZ-Funct-Demo.azurewebsites.net/GetAZVMStatus',
 
@@ -9,7 +9,7 @@ Param(
 
 	$AzFunctionuris = 'https://www.AZ-Funct-Demo.azurewebsites.net/GetAZVMStatus',
 
-	$AZResourceGroupName = 'AZ-Funct-Demo-RG'
+	$AZResourceGroupName = 'AZ-Demo-Function-RG'
 )
 
 Function Create-SecureString{
@@ -91,22 +91,34 @@ $KeyAndSecureString = Create-SecureString
 
 $KeyVaultSecret = @{
      Name        = $AZResourceGroupName.replace("RG","Key")
-     SecretValue = $KeyAndSecureString.Securestringoff
+     SecretValue = $KeyAndSecureString.Securestring
      VaultName   = ($AZResourceGroupName).replace("RG","Vault")
 }
 
 $secret = Set-AzureKeyVaultSecret @KeyVaultSecret
 
-<#
+
 $AZADApplication = New-AzureRmADApplication -DisplayName $AzFunctionDisplayName -HomePage $AzFunctionHomePage -IdentifierUris $AzFunctionuris -Password $KeyAndSecureString.Securestring
 
 ## Create the App Service Principal
 $ServicePrincipleName = New-AzureRmADServicePrincipal -ApplicationId $AZADApplication.ApplicationId
 
 ##
-New-AzureRmRoleAssignment -RoleDefinitionName 'Virtual Machine Contributor' -ServicePrincipalName $ServicePrincipleName.ApplicationId
+New-AzureRmRoleAssignment -RoleDefinitionName 'Virtual Machine Contributor' -ServicePrincipalName ($ServicePrincipleName.ApplicationId)
 
-## $webapp.SiteConfig.AppSettings.Add([Microsoft.Azure.Management.WebSites.Models.NameValuePair]::new("test","Summer"))
+##
+
+$tennentID = (Get-AzureRmSubscription).TenantId
+ 
+$webapp = Get-AzureRmWebApp -Name $AZResourceGroupName.Replace('RG','Function')
+$webapp.SiteConfig.AppSettings.Add([Microsoft.Azure.Management.WebSites.Models.NameValuePair]::new("AzureAutomationAppID",($ServicePrincipleName.ApplicationId)))
+$webapp.SiteConfig.AppSettings.Add([Microsoft.Azure.Management.WebSites.Models.NameValuePair]::new("AzureAutomationTennentID",($tennentID)))
+
+$Connection = @{}
+$webapp.SiteConfig.AppSettings  |foreach-object{$Connection.Add($_.name,$_.Value)}
+	
+Set-AzureRmWebApp -Name $AZResourceGroupName.Replace('RG','Function') -ResourceGroupName $AZResourceGroupName -appsettings $Connection 
 
 
-#>
+
+
