@@ -1,0 +1,19 @@
+$body = @{
+	"grant_type"=  "client_credentials"
+	"client_secret" = 'jongpassword'
+	"client_id" = '5bdca838-038b-4ac3-b732-ae185de0f854'
+	"resource" = "https://vault.azure.net"
+}
+
+
+$header = @{"Content-Type" = "application/x-www-form-urlencoded"}
+
+$bearer = invoke-restmethod -headers $header -Method Post -uri 'https://login.microsoftonline.com/e5dfffc4-be25-4cbe-9ddf-fef8889bead2/oauth2/token' -body $body
+ 
+
+
+$header = @{
+	"Authorization"=  "Bearer " +  $bearer.access_token
+}
+
+invoke-restmethod -header $header -uri "https://jongkeyvaultdemo123.vault.azure.net/secrets/jongsecretname/?api-version=2016-10-01"
