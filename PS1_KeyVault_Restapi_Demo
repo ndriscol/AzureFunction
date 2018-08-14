@@ -1,0 +1,75 @@
+$AzFunctionDisplayName = 'Az-Keyvault'
+$AzFunctionHomePage = 'https://www.AZ-Funct/GetAZVMStatus'
+$AzLocation = 'UKWest'
+$AzFunctionuris = 'https://www.AZ-Funct/GetAZVMStatus'
+$AZResourceGroupName = 'AZVaultFunctionRG'
+
+$ResourceGroupConfig = @{
+   Location = $AzLocation
+   Name     = $AZResourceGroupName
+}
+
+$ResourceGroup = New-AzureRMResourceGroup @ResourceGroupConfig
+
+
+$KeyVaultConfig = @{
+    Location          = $AzLocation
+    ResourceGroupName = $AZResourceGroupName
+    VaultName         = ($AZResourceGroupName.replace("RG","Keyvault").replace("-","").tolower())
+}
+
+$AzKeyVault = New-AzureRmKeyVault @KeyVaultConfig
+
+## creates a random password
+$KeyAndSecureStringKeyVault = Create-SecureString
+
+## Uploads secure string into credential store
+
+$KeyVaultSecret = @{
+     Name        = $AZResourceGroupName.replace("RG","Key")
+     SecretValue = $KeyAndSecureStringKeyVault.Securestring
+     VaultName   = ($AZResourceGroupName.replace("RG","Keyvault").replace("-","").tolower())
+}
+
+$secret = Set-AzureKeyVaultSecret @KeyVaultSecret
+
+$AZKeyAndSecureStringADApp = Create-SecureString
+
+$AZADApplication = New-AzureRmADApplication -DisplayName $AzFunctionDisplayName -HomePage $AzFunctionHomePage -IdentifierUris $AzFunctionuris -Password $AZKeyAndSecureStringADApp.SecureString
+
+## Create the App Service Principal
+
+$ServicePrincipleName = New-AzureRmADServicePrincipal -ApplicationId $AZADApplication.ApplicationId
+
+$AzKeyVaultSecret = @{
+     ObjectId             =  $AZADApplication.ObjectId
+     PermissionsToSecrets = 'Get'
+     VaultName            = ($AZResourceGroupName.replace("RG","Keyvault").replace("-","").tolower())
+}
+
+Set-AzureRmKeyVaultAccessPolicy @AzKeyVaultSecret 
+
+$Client_Secret = $AZKeyAndSecureStringADApp.RawPassword
+$client_id = $AZADApplication.ApplicationId
+$TennentID =  (get-azurermsubscription).TenantId
+$VaultName = 'azvaultfunctionkeyvault'
+$SecretName = 'AZVaultFunctionKey'
+
+$body = @{
+	"grant_type"=  "client_credentials"
+	"client_secret" = $Client_Secret
+	"client_id" = $client_id
+	"resource" = "https://vault.azure.net"
+}
+
+
+$header = @{"Content-Type" = "application/x-www-form-urlencoded"}
+
+$bearer = invoke-restmethod -headers $header -Method Post -uri ('https://login.microsoftonline.com/{0}/oauth2/token' -f $TennentID)-body $body
+ 
+$header = @{
+	"Authorization"=  "Bearer " +  $bearer.access_token
+}
+
+invoke-restmethod -header $header -uri ("https://{0}.vault.azure.net/secrets/{1}/?api-version=2016-10-01" -f $VaultName,$SecretName)
+
