@@ -1,0 +1,68 @@
+##Get Password from Keyvault
+$Client_Secret = $env:AzKeyVaultSecret
+$client_id     = $env:AzureAutomationAppID
+$TennentID     = $env:AzureAutomationTennentID
+$VaultName     = $env:AzKeyVaultURI
+$SecretName    = $env:AzKeyVaultSecretName
+$SubscriptionID = 'c667bfd0-7eef-4d67-a6ed-ffea929c9bea'
+
+$body = @{
+	"grant_type"=  "client_credentials"
+	"client_secret" = $Client_Secret
+	"client_id" = $client_id
+	"resource" = "https://management.azure.com"
+}
+$header = @{"Content-Type" = "application/x-www-form-urlencoded"}
+measure-command {$bearer = Invoke-RestMethod -headers $header -Method Post -uri ('https://login.microsoftonline.com/{0}/oauth2/token' -f $TennentID) -body $body}
+
+
+$VirtualMachines="https://management.azure.com/subscriptions/$SubscriptionID/providers/Microsoft.Compute/virtualmachines/?api-version=2017-03-30"
+measure-command {$VMs = Invoke-RestMethod -Header @{'authorization'="Bearer $($bearer.access_token)"} -URI $VirtualMachines -UserAgent 'application/json' -Method Get}
+$AllVMStats = @()
+
+     $VMs.value | Foreach {
+          $VM = $_
+          $Results = @()
+                      
+          #From -status
+          $ResourceGroup="https://management.azure.com/subscriptions/$Subscriptionid/resourceGroups/" + ($vm.id.split('/')[4]) + "/providers/Microsoft.Compute/virtualMachines/" + ($vm.id.split("/")[8]) + "?$expand=instanceView&api-version=2017-03-30"
+          #$Results += Invoke-RestMethod -Header @{'authorization'="Bearer $($bearer.access_token)"} -URI $ResourceGroup -UserAgent 'application/json' -Method Get
+          $Results += $NULL
+
+          #Network Interfaces 
+          $NetworkInterfaces="https://management.azure.com" + $Results[0].properties.networkprofile.networkinterfaces.id + "/?api-version=2017-03-01"
+          #$Results += Invoke-RestMethod -Header @{'authorization'="Bearer $($bearer.access_token)"} -URI $NetworkInterfaces -UserAgent 'application/json' -Method Get
+          $Results += $NULL
+
+          #GetIPConfig-Private
+          $IPConfig="https://management.azure.com" + $Results[1].properties.ipConfigurations.id + "/?api-version=2017-03-01"
+          #$Results += Invoke-RestMethod -Header @{'authorization'="Bearer $($bearer.access_token)"} -URI $IPConfig -UserAgent 'application/json' -Method Get
+          $Results += $NULL
+
+          #GetIPConfig-Public
+          $PublicIP="https://management.azure.com" + $Results[2].properties.publicIPAddress.id + "/?api-version=2017-03-01"
+          #$Results += Invoke-RestMethod -Header @{'authorization'="Bearer $($bearer.access_token)"} -URI $PublicIP -UserAgent 'application/json' -Method Get
+          $Results += $NULL
+
+          #Get-AzureRMVM
+          $Instanceview="https://management.azure.com/subscriptions/$Subscriptionid/resourceGroups/" + ($vm.id.split('/')[4]) + "/providers/Microsoft.Compute/virtualMachines/" + $vm.name + "/instanceView/?api-version=2017-03-30"
+          measure-command {$Results += Invoke-RestMethod -Header @{'authorization'="Bearer $($bearer.access_token)"} -URI $Instanceview -UserAgent 'application/json' -Method Get}
+          #$Results += $NULL
+
+          $VMStats = New-Object PSCustomObject
+          $VMStats | add-member -notepropertyname Name -notepropertyValue $VM.name
+          $VMStats | add-member -notepropertyname ResourceGroupName -notepropertyValue ($vm.id.split('/')[4])
+          #$VMStats | add-member -notepropertyname VMSize -notepropertyValue $Results[0].properties.hardwareprofile.vmsize
+          $VMStats | add-member -notepropertyname VMStatus -notepropertyValue $Results[4].statuses[1].displayStatus
+          #$VMStats | add-member -notepropertyname PublicIP -notepropertyValue $Results[3].properties.ipAddress
+          #$VMStats | add-member -notepropertyname PrivateIP -notepropertyValue $Results[2].properties.privateIPAddress
+          #$VMStats | add-member -notepropertyname location -notepropertyValue $vm.location
+          #$VMStats | add-member -notepropertyname ProvisioningState -notepropertyValue $vm.properties.provisioningState
+          #$VMStats | add-member -notepropertyname FQDN -notepropertyValue $Results[3].properties.dnsSettings.fqdn
+          $AllVMStats += $VMStats
+     }
+
+    $URI = 'https://az-demo-function-function.azurewebsites.net/api/VMsTableUpdate'
+    Invoke-RestMethod -Uri $URI -Method Post -Body ($AllVMStats | convertto-JSON)
+
+Out-File -Encoding Ascii -FilePath $res -inputObject ($AllVMStats | convertto-JSON)
