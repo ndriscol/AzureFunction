@@ -1,0 +1,36 @@
+##Get Password from Keyvault
+$Client_Secret = $env:AzKeyVaultSecret
+$client_id     = $env:AzureAutomationAppID
+$TennentID     = $env:AzureAutomationTennentID
+$VaultName     = $env:AzKeyVaultURI
+$SecretName    = $env:AzKeyVaultSecretName
+
+$body = @{
+	"grant_type"=  "client_credentials"
+	"client_secret" = $Client_Secret
+	"client_id" = $client_id
+	"resource" = "https://vault.azure.net"
+}
+
+
+$header = @{"Content-Type" = "application/x-www-form-urlencoded"}
+
+measure-command {$bearer = Invoke-RestMethod -headers $header -Method Post -uri ('https://login.microsoftonline.com/{0}/oauth2/token' -f $TennentID) -body $body}
+ 
+$header = @{
+	"Authorization"=  "Bearer " +  $bearer.access_token
+}
+
+measure-command {$Password = (Invoke-RestMethod -header $header -uri ("{0}/secrets/{1}/?api-version=2016-10-01" -f $VaultName,$SecretName)).Value}
+
+##Sign into AzureRM
+
+measure-command {Import-Module AzureRM.Profile,AzureRM.Compute}
+
+$SecureString = ConvertTo-SecureString -String $Client_Secret -AsPlainText -force
+$credentials = [System.Management.Automation.PSCredential]::new($client_id,$SecureString)
+
+measure-command {Add-AzureRmAccount -ServicePrincipal -Credential $credentials -TenantId $TennentID }
+measure-command {$vm =  Get-AzureRmVM | foreach{Get-AzureRmVm -ResourceGroupName $_.ResourceGroupName -Name $_.Name -Status | Select-Object -Property Name,ResourceGroupName,@{Name='VMStatus';Expression={$_.Statuses[1].Code}}} | ConvertTo-Json}
+
+Out-File -Encoding Ascii -FilePath $res -inputObject $vm
