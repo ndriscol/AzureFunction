@@ -1,0 +1,156 @@
+function ConvertTo-HashtableFromPsCustomObject { 
+     param ( 
+         [Parameter(  
+             Position = 0,   
+             Mandatory = $true,   
+             ValueFromPipeline = $true,  
+             ValueFromPipelineByPropertyName = $true  
+         )] [object[]]$psCustomObject 
+     ); 
+     
+    foreach ($myPsObject in $psCustomObject) { 
+        $output = @{}; 
+        $myPsObject | Get-Member -MemberType *Property | % { 
+            $output.($_.name) = $myPsObject.($_.name); 
+        } 
+        $output; 
+     } 
+ }
+
+Function Delete-AzureTableData
+{
+    [CmdletBinding()]    
+    Param
+    (
+        [parameter(Mandatory=$true)][string]$Endpoint,
+        [parameter(Mandatory=$true)][string]$SharedAccessSignature,
+        [parameter(Mandatory=$true)][string]$Table,
+        [parameter(Mandatory=$true)][string]$PartitionKey,
+        [parameter(Mandatory=$true)][string]$RowKey
+    )
+
+    $Headers = @{
+        "x-ms-date"=(Get-Date -Format r);
+        "x-ms-version"="2016-05-31";
+        "Accept-Charset"="UTF-8";
+        "DataServiceVersion"="3.0;NetFx";
+        "MaxDataServiceVersion"="3.0;NetFx";
+        "Accept"="application/json;odata=nometadata";
+        "If-Match"="*"
+    }
+
+    $URI = ($Endpoint + "/" + $Table + "(PartitionKey='" + $PartitionKey + "',RowKey='" + $RowKey + "')/" + $SharedAccessSignature)
+    Invoke-RestMethod -Method Delete -Uri $URI -Headers $Headers
+}
+ 
+
+Function Insert-AzureTableData
+{
+    [CmdletBinding()]    
+    Param
+    (
+        [parameter(Mandatory=$true)][string]$Endpoint,
+        [parameter(Mandatory=$true)][string]$SharedAccessSignature,
+        [parameter(Mandatory=$true)][string]$Table,
+        [parameter(Mandatory=$true)][hashtable]$TableData
+    )
+
+    $Headers = @{
+        "x-ms-date"=(Get-Date -Format r);
+        "x-ms-version"="2016-05-31";
+        "Accept-Charset"="UTF-8";
+        "DataServiceVersion"="3.0;NetFx";
+        "MaxDataServiceVersion"="3.0;NetFx";
+        "Accept"="application/json;odata=nometadata"
+    }
+
+    $URI = ($Endpoint + "/" + $Table + "/" + $SharedAccessSignature);
+    $Body = [System.Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $TableData))
+    $Response = Invoke-RestMethod -Method Post -Uri $URI -Headers $Headers -Body $Body -ContentType "application/json"
+    Return $Response
+}
+
+Function Get-AzureTableData
+{
+    [CmdletBinding()]    
+    Param
+    (
+        [parameter(Mandatory=$true)][string]$Endpoint,
+        [parameter(Mandatory=$true)][string]$SharedAccessSignature,
+        [parameter(Mandatory=$true)][string]$Table
+    )
+
+    $Headers = @{
+        "x-ms-date"=(Get-Date -Format r);
+        "x-ms-version"="2016-05-31";
+        "Accept-Charset"="UTF-8";
+        "DataServiceVersion"="3.0;NetFx";
+        "MaxDataServiceVersion"="3.0;NetFx";
+        "Accept"="application/json;odata=nometadata"
+    }
+
+    $URI = ($Endpoint + "/" + $Table + "/" + $SharedAccessSignature)
+    $Response = Invoke-RestMethod -Method Get -Uri $URI -Headers $Headers
+    Return $Response.value
+}
+
+Function Update-AzureTableData
+{
+    [CmdletBinding()]    
+    Param
+    (
+        [parameter(Mandatory=$true)][string]$Endpoint,
+        [parameter(Mandatory=$true)][string]$SharedAccessSignature,
+        [parameter(Mandatory=$true)][string]$Table,
+        [parameter(Mandatory=$true)][string]$PartitionKey,
+        [parameter(Mandatory=$true)][string]$RowKey,
+        [parameter(Mandatory=$true)][hashtable]$TableData
+    )
+
+    $Headers = @{
+        "x-ms-date"=(Get-Date -Format r);
+        "x-ms-version"="2016-05-31";
+        "Accept-Charset"="UTF-8";
+        "DataServiceVersion"="3.0;NetFx";
+        "MaxDataServiceVersion"="3.0;NetFx";
+        "Accept"="application/json;odata=nometadata"
+    }
+
+    $URI = ($Endpoint + "/" + $Table + "(PartitionKey='" + $PartitionKey + "',RowKey='" + $RowKey + "')/" + $SharedAccessSignature)
+    $Body = [System.Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $TableData))
+    Invoke-RestMethod -Method Put -Uri $URI -Headers $Headers -Body $Body -ContentType "application/json"
+}
+
+$Endpoint = 'https://aztradeteqa39e.table.core.windows.net'
+$SharedAccessSignature = '?sv=2017-11-09&ss=t&srt=sco&sp=rwdlacu&se=2020-08-18T23:45:43Z&st=2018-08-18T15:45:43Z&spr=https&sig=XnLBtHUyCgZwSZzEbcMw2pUSLIgOe5DM%2BGUxuIkFwVk%3D'
+$Table = 'VMs'
+$requestBody = Get-Content $req -Raw | ConvertFrom-Json
+$Output = @()
+
+if (@($requestBody).Count -gt 0) {
+    $ActionGroupData = @{
+        Name = ($requestBody.data.context.activityLog.authorization.Scope.split('/')[8])
+        ResourceGroupName = ($requestBody.data.context.activityLog.authorization.Scope.split('/')[4])
+        VMStatus = ($requestBody.data.context.activityLog.authorization.action.split('/')[2])
+        PartitionKey = 'AzureVMStatus'
+        RowKey = $null
+    }
+    write-output $ActionGroupData.name,$ActionGroupData.ResourceGroupName,$ActionGroupData.VMStatus
+    if (@(Get-AzureTableData -Endpoint $Endpoint -SharedAccessSignature $SharedAccessSignature -Table $Table | where {$_.Name -eq  $ActionGroupData.Name}).Count -eq 0 ) {
+        $NextRow = [string]([int](Get-AzureTableData -Endpoint $Endpoint -SharedAccessSignature $SharedAccessSignature -Table $Table | where {$_.partitionkey -eq "AzureVMStatus"} | sort-object | select-object -Property RowKey -last 1).RowKey + 1)            
+        $ActionGroupData.RowKey = $NextRow
+        $Output += Insert-AzureTableData -Endpoint $Endpoint -SharedAccessSignature $SharedAccessSignature -Table $Table -TableData $ActionGroupData
+    } else {
+        $LastVMStatus = Get-AzureTableData -Endpoint $Endpoint -SharedAccessSignature $SharedAccessSignature -Table $Table | where {$_.Name -eq $ActionGroupData.Name}
+        $ActionGroupData.RowKey = $LastVMStatus.RowKey
+        Update-AzureTableData -PartitionKey AzureVMStatus -RowKey $LastVMStatus.RowKey -Endpoint $Endpoint -SharedAccessSignature $SharedAccessSignature -Table $Table -TableData $ActionGroupData 
+        $Output += Get-AzureTableData -Endpoint $Endpoint -SharedAccessSignature $SharedAccessSignature -Table $Table | where {$_.Name -eq $ActionGroupData.Name}
+    }
+    
+}else{
+     $Output += Get-AzureTableData -Endpoint $Endpoint -SharedAccessSignature $SharedAccessSignature -Table $Table | select-object -property Name,ResourceGroupName,VMStatus
+    write-output "Get Data from azure tables"
+}
+
+Out-File -Encoding Ascii -FilePath $res -inputObject ($Output | convertto-JSON)
+
