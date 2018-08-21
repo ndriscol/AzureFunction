@@ -1,0 +1,7 @@
+$requestBody = Get-Content $req -Raw | ConvertFrom-Json
+$apiVersion = "2017-09-01"
+$resourceURI = "https://management.azure.com"
+$tokenAuthURI = $env:MSI_ENDPOINT + "?resource=$resourceURI&api-version=$apiVersion"
+$bearer = Invoke-RestMethod -Method Get -Headers @{"Secret"="$env:MSI_SECRET"} -Uri $tokenAuthURI
+$bearer
+Out-File -Encoding Ascii -FilePath $res -inputObject $requestBody
